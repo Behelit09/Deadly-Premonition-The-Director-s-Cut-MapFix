@@ -1,0 +1,30 @@
+# Build output & binaries
+*.asi
+*.dll
+*.exe
+*.obj
+*.o
+*.lib
+*.a
+*.pdb
+*.exp
+*.ilk
+
+# Build directories
+build/
+bin/
+out/
+.zig-cache/
+
+# Runtime logs & temporary files
+*.log
+*.old
+*.bak
+*.tmp
+
+# IDE & Editor files
+.vscode/
+.vs/
+.idea/
+*.suo
+*.user
