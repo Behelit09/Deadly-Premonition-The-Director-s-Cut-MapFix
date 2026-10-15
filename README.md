@@ -23,7 +23,8 @@ In the vanilla game, the in-game map viewer is severely constrained:
 - ⚡ **On-Demand Auto-Load Hook**: Hooks `FindResourceByName` (`0x0065A32A`) in the render loop so that any tile missing from RAM is synchronously loaded on-the-spot without popping or blank gaps.
 - 🧭 **Synchronous Preloader**: Loads all 64 tiles synchronously when the map viewer is opened (`0x00661860`), ensuring instantaneous rendering before the first frame.
 - 🎮 **Full Panning Freedom**: Neutralizes camera edge clamping (`0x00659534` / `0x00659574`), granting full WASD / analog stick cursor movement across the entire `40000x40000` world space.
-- ⚙️ **Customizable Configuration**: Configure initial zoom, minimum zoom floor, and debug logging through `MapFix.ini`.
+- 🧭 **Map Orientation Lock (North-Up / South-Up)**: Overrides the disorienting dynamic map rotation (`0x00659499`..`0x0065D6B3`) so the map stays locked to North-Up (`LockOrientation = 1`) or South-Up (`LockOrientation = 2`), while decoupling York's player arrow (`0x0065C27B`) so it accurately rotates independently on the fixed map canvas.
+- ⚙️ **Customizable Configuration**: Configure initial zoom, minimum zoom floor, map orientation lock, and debug logging through `MapFix.ini`.
 
 ---
 
@@ -53,6 +54,9 @@ The mod can be configured via `scripts/MapFix.ini`:
 ; 1 = Enabled, 0 = Disabled
 Enabled = 1
 
+; Map orientation lock: 0 = Dynamic (Vanilla), 1 = North-Up (0 deg), 2 = South-Up (180 deg)
+LockOrientation = 1
+
 ; Minimum zoom limit (vanilla is 1.0, 0.20 shows the entire Greenvale map)
 MinZoom = 0.20
 
@@ -79,6 +83,14 @@ EnableLog = 1
 | `0x006B3AA0` | `DeleteResource` | `55 8B EC 83 EC 0C` | Hooks `DeleteResourceHook` (bypasses deletion for `0x0937..0x0976`) |
 | `0x006B2830` | `ReleaseResource` | `55 8B EC 83 EC 08` | Hooks `ReleaseResourceHook` (bypasses release with `ret 12` for `0x0937..0x0976`) |
 | `0x0065A32A` | `FindResourceByName` | `E8 01 89 05 00` | Hooks `FindOrLoadTileResourceHook` (on-demand synchronous fallback) |
+| `0x00659499` | Map heading hook (camera/render) | `E8 xx xx xx xx D9 40 7C` | Hooks `MapHeadingHook` (locks orientation: 0=Dynamic, 1=North-Up, 2=South-Up) |
+| `0x006594D6` | Map heading hook | `E8 xx xx xx xx D9 40 7C` | Hooks `MapHeadingHook` |
+| `0x0065A246` | Map heading hook | `E8 xx xx xx xx D9 40 7C` | Hooks `MapHeadingHook` |
+| `0x0065A4E9` | Map heading hook | `E8 xx xx xx xx D9 40 7C` | Hooks `MapHeadingHook` |
+| `0x0065BA14` | Map heading hook | `E8 xx xx xx xx D9 40 7C` | Hooks `MapHeadingHook` |
+| `0x0065C1EE` | Map heading hook | `E8 xx xx xx xx D9 40 7C` | Hooks `MapHeadingHook` |
+| `0x0065D6B3` | Map heading hook | `E8 xx xx xx xx D9 40 7C` | Hooks `MapHeadingHook` |
+| `0x0065C27B` | York arrow icon rotation | `D9 EE 8B D8 D9 5B 48` | Hooks `YorkArrowIconHook` (counter-rotates arrow on locked map) |
 
 ---
 

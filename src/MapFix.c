@@ -8,6 +8,8 @@
 // Configuration globals
 static volatile float g_MinZoom = 0.20f;
 static volatile float g_DefaultZoom = 0.20f;
+static volatile int g_LockOrientation = 1;
+static const float kPi = 3.14159265f;
 static int g_Enabled = 1;
 static int g_EnableLog = 1;
 static wchar_t g_LogPath[MAX_PATH] = { 0 };
@@ -170,6 +172,81 @@ __attribute__((naked)) void FindOrLoadTileResourceHook(void) {
     );
 }
 
+// Hooks map heading calculations to freeze map orientation (North-Up / South-Up / Dynamic)
+__attribute__((naked)) void MapHeadingHook(void) {
+    __asm__ volatile (
+        ".intel_syntax noprefix\n"
+        "mov eax, dword ptr [_g_LockOrientation]\n"
+        "cmp eax, 1\n"
+        "je 1f\n"
+        "cmp eax, 2\n"
+        "je 2f\n"
+        "push dword ptr [esp + 4]\n"
+        "mov eax, 0x006C5FD0\n"
+        "call eax\n"
+        "test eax, eax\n"
+        "jz 1f\n"
+        "fld dword ptr [eax + 0x7c]\n"
+        "ret 4\n"
+        "1:\n"
+        "fld dword ptr [_kPi]\n"
+        "ret 4\n"
+        "2:\n"
+        "fldz\n"
+        "ret 4\n"
+        ".att_syntax\n"
+    );
+}
+
+// Hooks York's arrow icon rotation on the map to counter-rotate with locked orientation
+__attribute__((naked)) void YorkArrowIconHook(void) {
+    __asm__ volatile (
+        ".intel_syntax noprefix\n"
+        "mov ebx, eax\n"
+        "mov eax, dword ptr [_g_LockOrientation]\n"
+        "cmp eax, 1\n"
+        "je 1f\n"
+        "cmp eax, 2\n"
+        "je 2f\n"
+        "fldz\n"
+        "fstp dword ptr [ebx + 0x48]\n"
+        "ret\n"
+        "1:\n"
+        "push ecx\n"
+        "push edx\n"
+        "push dword ptr [0x008A9BA4]\n"
+        "mov eax, 0x006C5FD0\n"
+        "call eax\n"
+        "pop edx\n"
+        "pop ecx\n"
+        "test eax, eax\n"
+        "jz 3f\n"
+        "fld dword ptr [_kPi]\n"
+        "fsub dword ptr [eax + 0x7c]\n"
+        "fstp dword ptr [ebx + 0x48]\n"
+        "ret\n"
+        "2:\n"
+        "push ecx\n"
+        "push edx\n"
+        "push dword ptr [0x008A9BA4]\n"
+        "mov eax, 0x006C5FD0\n"
+        "call eax\n"
+        "pop edx\n"
+        "pop ecx\n"
+        "test eax, eax\n"
+        "jz 3f\n"
+        "fld dword ptr [eax + 0x7c]\n"
+        "fchs\n"
+        "fstp dword ptr [ebx + 0x48]\n"
+        "ret\n"
+        "3:\n"
+        "fldz\n"
+        "fstp dword ptr [ebx + 0x48]\n"
+        "ret\n"
+        ".att_syntax\n"
+    );
+}
+
 // -------------------------------------------------------------
 // Patch Application
 // -------------------------------------------------------------
@@ -325,6 +402,60 @@ static BOOL ApplyAllPatches(void) {
         LogMessage("[MapFix] WARNING: Signature mismatch at 0x0065A32A (FindResourceByName)\n");
     }
 
+    // ---------------------------------------------------------
+    // 6. Map Orientation Lock Hooks:
+    //    Overrides dynamic camera rotation so the map stays fixed (North-Up / South-Up).
+    //    Hooks 7 MapHeading call sites (8 bytes: call MapHeadingHook + 3 NOPs).
+    //    Hooks YorkArrowIcon at 0x0065C27B (7 bytes: call YorkArrowIconHook + 2 NOPs).
+    // ---------------------------------------------------------
+    static const uintptr_t kHeadingHookAddrs[7] = {
+        0x00659499, 0x006594D6, 0x0065A246, 0x0065A4E9,
+        0x0065BA14, 0x0065C1EE, 0x0065D6B3
+    };
+    for (int i = 0; i < 7; ++i) {
+        uintptr_t addr = kHeadingHookAddrs[i];
+        if (*(unsigned char*)addr == 0xE8 &&
+            *(unsigned char*)(addr + 5) == 0xD9 &&
+            *(unsigned char*)(addr + 6) == 0x40 &&
+            *(unsigned char*)(addr + 7) == 0x7C) {
+            unsigned char patch[8];
+            patch[0] = 0xE8;
+            int32_t rel = (int32_t)((uintptr_t)MapHeadingHook - (addr + 5));
+            memcpy(&patch[1], &rel, 4);
+            patch[5] = 0x90;
+            patch[6] = 0x90;
+            patch[7] = 0x90;
+            if (PatchMemory((void*)addr, patch, 8)) {
+                LogMessage("[MapFix] Applied MapHeadingHook at 0x%08X\n", addr);
+            } else {
+                LogMessage("[MapFix] ERROR: Failed to patch MapHeadingHook at 0x%08X\n", addr);
+                return FALSE;
+            }
+        } else {
+            LogMessage("[MapFix] ERROR: Signature check failed at 0x%08X (MapHeadingHook)!\n", addr);
+            return FALSE;
+        }
+    }
+
+    static const unsigned char kYorkArrowExpected[7] = { 0xD9, 0xEE, 0x8B, 0xD8, 0xD9, 0x5B, 0x48 };
+    if (memcmp((void*)0x0065C27B, kYorkArrowExpected, 7) == 0) {
+        unsigned char arrowPatch[7];
+        arrowPatch[0] = 0xE8;
+        int32_t relArrow = (int32_t)((uintptr_t)YorkArrowIconHook - (0x0065C27B + 5));
+        memcpy(&arrowPatch[1], &relArrow, 4);
+        arrowPatch[5] = 0x90;
+        arrowPatch[6] = 0x90;
+        if (PatchMemory((void*)0x0065C27B, arrowPatch, 7)) {
+            LogMessage("[MapFix] Applied YorkArrowIconHook at 0x0065C27B\n");
+        } else {
+            LogMessage("[MapFix] ERROR: Failed to patch YorkArrowIconHook at 0x0065C27B\n");
+            return FALSE;
+        }
+    } else {
+        LogMessage("[MapFix] ERROR: Signature check failed at 0x0065C27B (YorkArrowIconHook)!\n");
+        return FALSE;
+    }
+
     return TRUE;
 }
 
@@ -350,6 +481,9 @@ static void LoadConfig(HMODULE hModule) {
 
     g_Enabled = GetPrivateProfileIntW(L"MapFix", L"Enabled", 1, iniPath);
 
+    g_LockOrientation = GetPrivateProfileIntW(L"MapFix", L"LockOrientation", 1, iniPath);
+    if (g_LockOrientation < 0 || g_LockOrientation > 2) g_LockOrientation = 1;
+
     wchar_t buf[64] = { 0 };
     GetPrivateProfileStringW(L"MapFix", L"MinZoom", L"0.20", buf, 64, iniPath);
     float minZ = (float)_wtof(buf);
@@ -363,8 +497,10 @@ static void LoadConfig(HMODULE hModule) {
 
     g_EnableLog = GetPrivateProfileIntW(L"MapFix", L"EnableLog", 1, iniPath);
 
-    LogMessage("[MapFix] Config: Enabled=%d, MinZoom=%.2f, DefaultZoom=%.2f\n",
-               g_Enabled, g_MinZoom, g_DefaultZoom);
+    (void)*(volatile const float*)&kPi;
+
+    LogMessage("[MapFix] Config: Enabled=%d, LockOrientation=%d, MinZoom=%.2f, DefaultZoom=%.2f\n",
+               g_Enabled, g_LockOrientation, g_MinZoom, g_DefaultZoom);
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
