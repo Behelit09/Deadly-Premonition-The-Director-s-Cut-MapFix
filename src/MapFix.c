@@ -30,20 +30,7 @@ static void LogMessage(const char* fmt, ...) {
 // C Worker Functions called from assembly wrappers
 // -------------------------------------------------------------
 
-static void KeepAllTilesActive(void* pManager) {
-    if (!pManager) return;
-    int count = *(int*)((char*)pManager + 0x7C);
-    char* pArray = *(char**)((char*)pManager + 0x80);
-    if (pArray && count > 0 && count < 1000) {
-        for (int i = 0; i < count; ++i) {
-            char* tile = pArray + i * 0x50;
-            tile[0x4C] = 1;
-        }
-    }
-}
-
-// Enforces min zoom limit (g_MinZoom) and max zoom limit (3.5f),
-// and keeps all map tiles resident every frame.
+// Enforces min zoom limit (g_MinZoom) and max zoom limit (3.5f)
 void __cdecl ZoomClampWorker(void* pMap) {
     if (!pMap) return;
     float* pZoom = (float*)((char*)pMap + 0x8EE0);
@@ -52,9 +39,6 @@ void __cdecl ZoomClampWorker(void* pMap) {
     } else if (*pZoom > 3.5f) {
         *pZoom = 3.5f;
     }
-
-    KeepAllTilesActive((char*)pMap + 0x1638);
-    KeepAllTilesActive((char*)pMap + 0x19D0);
 }
 
 // Sets initial zoom and preloads all 64 overworld tiles synchronously from DPSerial.003
@@ -291,25 +275,7 @@ static BOOL ApplyAllPatches(void) {
     LogMessage("[MapFix] Applied Map Tile Grid Expansion: rendering all 64 tiles (0..63)\n");
 
     // ---------------------------------------------------------
-    // 4. Map Tile Keep-Active Patches (Prevent Culling on Pan):
-    //    0x00659DFC: change 'mov byte ptr [eax + 4Ch], 0' to 'mov byte ptr [eax + 4Ch], 1'
-    //    0x0065D32C: change 'mov byte ptr [ebx + 4Ch], 0' to 'mov byte ptr [ebx + 4Ch], 1'
-    // ---------------------------------------------------------
-    static const unsigned char kTileKeepActiveExpected[4] = { 0xC6, 0x40, 0x4C, 0x00 };
-    static const unsigned char kTileKeepActivePatch[4]    = { 0xC6, 0x40, 0x4C, 0x01 };
-    if (memcmp((void*)0x00659DFC, kTileKeepActiveExpected, 4) == 0) {
-        PatchMemory((void*)0x00659DFC, kTileKeepActivePatch, 4);
-    }
-
-    static const unsigned char kTileKeepActive2Expected[4] = { 0xC6, 0x43, 0x4C, 0x00 };
-    static const unsigned char kTileKeepActive2Patch[4]    = { 0xC6, 0x43, 0x4C, 0x01 };
-    if (memcmp((void*)0x0065D32C, kTileKeepActive2Expected, 4) == 0) {
-        PatchMemory((void*)0x0065D32C, kTileKeepActive2Patch, 4);
-    }
-    LogMessage("[MapFix] Applied Tile Keep-Active Patches (0x00659DFC, 0x0065D32C)\n");
-
-    // ---------------------------------------------------------
-    // 5. Tile Deletion & Release Immunity Hooks:
+    // 4. Tile Deletion & Release Immunity Hooks:
     //    Protects overworld map tiles (IDs 0x0937..0x0976) from EVER
     //    being deleted or marked for unload by the background streamer.
     // ---------------------------------------------------------
@@ -342,7 +308,7 @@ static BOOL ApplyAllPatches(void) {
     }
 
     // ---------------------------------------------------------
-    // 6. On-Demand Map Tile Loader Hook at 0x0065A32A:
+    // 5. On-Demand Map Tile Loader Hook at 0x0065A32A:
     //    If FindResourceByName returns NULL during render, loads the tile
     //    synchronously and returns the freshly loaded resource.
     // ---------------------------------------------------------

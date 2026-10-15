@@ -76,8 +76,6 @@ EnableLog = 1
 | `0x00659574` | Camera Z edge clamp | `D9 44 24 38` | `D9 EE 90 90` (`fldz`, unclamps Z pan boundary) |
 | `0x0065A2ED` | Tile index lookup (3x3) | `0F B7 84 54 68 07 00 00 ...` | `89 D3` (`mov ebx, edx` + 18 NOPs, loops 0..63) |
 | `0x0065A43C` | Tile loop limit | `83 F8 09` (`cmp eax, 9`) | `83 F8 40` (`cmp eax, 64`) |
-| `0x00659DFC` | Tile keep-active #1 | `C6 40 4C 00` | `C6 40 4C 01` (`mov [eax + 4Ch], 1`) |
-| `0x0065D32C` | Tile keep-active #2 | `C6 43 4C 00` | `C6 43 4C 01` (`mov [ebx + 4Ch], 1`) |
 | `0x006B3AA0` | `DeleteResource` | `55 8B EC 83 EC 0C` | Hooks `DeleteResourceHook` (bypasses deletion for `0x0937..0x0976`) |
 | `0x006B2830` | `ReleaseResource` | `55 8B EC 83 EC 08` | Hooks `ReleaseResourceHook` (bypasses release with `ret 12` for `0x0937..0x0976`) |
 | `0x0065A32A` | `FindResourceByName` | `E8 01 89 05 00` | Hooks `FindOrLoadTileResourceHook` (on-demand synchronous fallback) |
