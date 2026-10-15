@@ -79,8 +79,8 @@ EnableLog = 1
 | `0x0065919F` | Zoom-out floor clamp | `75 0D` (`jne`) | `EB 0D` (`jmp`, skips 1.0 floor clamp) |
 | `0x006591F0` | Frame zoom clamp call | `E8 2B 74 0A 00` | Hooks `ZoomClampWrapper` (enforces `g_MinZoom` .. `3.5f`) |
 | `0x00661860` | Map viewer init hook | `D9 9E E0 8E 00 00` | Hooks `ZoomInitHook` (sets initial zoom & preloads 64 tiles) |
-| `0x00659534` | Camera X edge clamp | `D9 44 24 3C` | `D9 EE 90 90` (`fldz`, unclamps X pan boundary) |
-| `0x00659574` | Camera Z edge clamp | `D9 44 24 38` | `D9 EE 90 90` (`fldz`, unclamps Z pan boundary) |
+| `0x00659534` | Camera X edge clamp | `D9 44 24 3C D9 C0` | Hooks `PanClampXHook` (`UnlockPanLimits`: 0=Greenvale clamp, 1=Free pan) |
+| `0x00659574` | Camera Z edge clamp | `D9 44 24 38 D9 C0` | Hooks `PanClampZHook` (`UnlockPanLimits`: 0=Greenvale clamp, 1=Free pan) |
 | `0x0065A2ED` | Tile index lookup (3x3) | `0F B7 84 54 68 07 00 00 ...` | `89 D3` (`mov ebx, edx` + 18 NOPs, loops 0..63) |
 | `0x0065A43C` | Tile loop limit | `83 F8 09` (`cmp eax, 9`) | `83 F8 40` (`cmp eax, 64`) |
 | `0x006B3AA0` | `DeleteResource` | `55 8B EC 83 EC 0C` | Hooks `DeleteResourceHook` (bypasses deletion for `0x0937..0x0976`) |

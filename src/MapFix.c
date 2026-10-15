@@ -11,6 +11,7 @@ static volatile float g_DefaultZoom = 0.20f;
 static volatile int g_LockOrientation = 1;
 static int g_UnlockPanLimits = 0;
 static const float kPi = 3.14159265f;
+static const float kLimit20k = 20000.0f;
 static int g_Enabled = 1;
 static int g_EnableLog = 1;
 static wchar_t g_LogPath[MAX_PATH] = { 0 };
@@ -33,8 +34,7 @@ static void LogMessage(const char* fmt, ...) {
 // C Worker Functions called from assembly wrappers
 // -------------------------------------------------------------
 
-// Enforces min zoom limit (g_MinZoom) and max zoom limit (3.5f),
-// and clamps camera coordinates inside Greenvale map boundaries when UnlockPanLimits = 0.
+// Enforces min zoom limit (g_MinZoom) and max zoom limit (3.5f)
 void __cdecl ZoomClampWorker(void* pMap) {
     if (!pMap) return;
     float* pZoom = (float*)((char*)pMap + 0x8EE0);
@@ -42,24 +42,6 @@ void __cdecl ZoomClampWorker(void* pMap) {
         *pZoom = g_MinZoom;
     } else if (*pZoom > 3.5f) {
         *pZoom = 3.5f;
-    }
-
-    if (!g_UnlockPanLimits && *pZoom > 0.001f) {
-        float* pCamX = (float*)((char*)pMap + 0x8ED0);
-        float* pCamZ = (float*)((char*)pMap + 0x8ED8);
-
-        float halfW = 4687.5f / *pZoom;
-        float halfH = 2636.72f / *pZoom;
-
-        float minX = (halfW < 20000.0f) ? halfW : 20000.0f;
-        float maxX = 40000.0f - minX;
-        if (*pCamX < minX) *pCamX = minX;
-        else if (*pCamX > maxX) *pCamX = maxX;
-
-        float minZ = (halfH < 20000.0f) ? halfH : 20000.0f;
-        float maxZ = 40000.0f - minZ;
-        if (*pCamZ < minZ) *pCamZ = minZ;
-        else if (*pCamZ > maxZ) *pCamZ = maxZ;
     }
 }
 
@@ -267,6 +249,57 @@ __attribute__((naked)) void YorkArrowIconHook(void) {
     );
 }
 
+// Map Pan Clamp Hooks:
+// When UnlockPanLimits = 0, clamps halfW / halfH to 20000.0f, keeping camera within Greenvale map boundaries.
+// When UnlockPanLimits = 1, loads 0.0f (fldz), unlocking full 40000x40000 world extent.
+__attribute__((naked)) void PanClampXHook(void) {
+    __asm__ volatile (
+        ".intel_syntax noprefix\n"
+        "cmp dword ptr [_g_UnlockPanLimits], 0\n"
+        "jnz 2f\n"
+        "fld dword ptr [esp + 0x40]\n"   // caller [esp + 0x3c]
+        "fld dword ptr [_kLimit20k]\n"
+        "fcomip st(0), st(1)\n"
+        "jb 1f\n"
+        "jmp 3f\n"
+        "1:\n"
+        "fstp st(0)\n"
+        "fld dword ptr [_kLimit20k]\n"
+        "3:\n"
+        "fld st(0)\n"
+        "ret\n"
+        "2:\n"
+        "fldz\n"
+        "fld st(0)\n"
+        "ret\n"
+        ".att_syntax\n"
+    );
+}
+
+__attribute__((naked)) void PanClampZHook(void) {
+    __asm__ volatile (
+        ".intel_syntax noprefix\n"
+        "cmp dword ptr [_g_UnlockPanLimits], 0\n"
+        "jnz 2f\n"
+        "fld dword ptr [esp + 0x3c]\n"   // caller [esp + 0x38]
+        "fld dword ptr [_kLimit20k]\n"
+        "fcomip st(0), st(1)\n"
+        "jb 1f\n"
+        "jmp 3f\n"
+        "1:\n"
+        "fstp st(0)\n"
+        "fld dword ptr [_kLimit20k]\n"
+        "3:\n"
+        "fld st(0)\n"
+        "ret\n"
+        "2:\n"
+        "fldz\n"
+        "fld st(0)\n"
+        "ret\n"
+        ".att_syntax\n"
+    );
+}
+
 // -------------------------------------------------------------
 // Patch Application
 // -------------------------------------------------------------
@@ -326,21 +359,33 @@ static BOOL ApplyAllPatches(void) {
 
     // ---------------------------------------------------------
     // 2. Map Panning Bounds Fix (Edge Clamping):
-    //    0x00659534: replace fld [esp + 3Ch] with fldz (D9 EE 90 90)
-    //    0x00659574: replace fld [esp + 38h] with fldz (D9 EE 90 90)
-    //    Clamps Camera X and Camera Z directly to [0.0, 40000.0]
+    //    0x00659534: Hook PanClampXHook (6 bytes)
+    //    0x00659574: Hook PanClampZHook (6 bytes)
+    //    When UnlockPanLimits = 0: clamps halfW / halfH to 20000.0f, keeping camera within Greenvale
+    //    When UnlockPanLimits = 1: loads 0.0f (fldz), unlocking full 40000x40000 world extent
     // ---------------------------------------------------------
-    static const unsigned char kPanClampXExpected[4] = { 0xD9, 0x44, 0x24, 0x3C };
-    static const unsigned char kPanClampZExpected[4] = { 0xD9, 0x44, 0x24, 0x38 };
-    if (memcmp((void*)0x00659534, kPanClampXExpected, 4) != 0 ||
-        memcmp((void*)0x00659574, kPanClampZExpected, 4) != 0) {
+    static const unsigned char kPanClampXExpected[6] = { 0xD9, 0x44, 0x24, 0x3C, 0xD9, 0xC0 };
+    static const unsigned char kPanClampZExpected[6] = { 0xD9, 0x44, 0x24, 0x38, 0xD9, 0xC0 };
+    if (memcmp((void*)0x00659534, kPanClampXExpected, 6) != 0 ||
+        memcmp((void*)0x00659574, kPanClampZExpected, 6) != 0) {
         LogMessage("[MapFix] ERROR: Signature check failed at 0x00659534 / 0x00659574 (Pan Clamp)!\n");
         return FALSE;
     }
-    static const unsigned char kFldzNop[4] = { 0xD9, 0xEE, 0x90, 0x90 };
-    if (!PatchMemory((void*)0x00659534, kFldzNop, 4)) return FALSE;
-    if (!PatchMemory((void*)0x00659574, kFldzNop, 4)) return FALSE;
-    LogMessage("[MapFix] Applied Map Pan Clamp Fix: unlocked full 40000x40000 world extent\n");
+    unsigned char patchX[6];
+    patchX[0] = 0xE8;
+    int32_t relX = (int32_t)((uintptr_t)PanClampXHook - (0x00659534 + 5));
+    memcpy(&patchX[1], &relX, 4);
+    patchX[5] = 0x90; // NOP
+
+    unsigned char patchZ[6];
+    patchZ[0] = 0xE8;
+    int32_t relZ = (int32_t)((uintptr_t)PanClampZHook - (0x00659574 + 5));
+    memcpy(&patchZ[1], &relZ, 4);
+    patchZ[5] = 0x90; // NOP
+
+    if (!PatchMemory((void*)0x00659534, patchX, 6)) return FALSE;
+    if (!PatchMemory((void*)0x00659574, patchZ, 6)) return FALSE;
+    LogMessage("[MapFix] Applied Map Pan Clamp Hook at 0x00659534 / 0x00659574 (UnlockPanLimits=%d)\n", g_UnlockPanLimits);
 
     // ---------------------------------------------------------
     // 3. Map Tile Streaming Grid Expansion (Draw All 64 Tiles):
@@ -520,6 +565,7 @@ static void LoadConfig(HMODULE hModule) {
     g_EnableLog = GetPrivateProfileIntW(L"MapFix", L"EnableLog", 1, iniPath);
 
     (void)*(volatile const float*)&kPi;
+    (void)*(volatile const float*)&kLimit20k;
 
     LogMessage("[MapFix] Config: Enabled=%d, LockOrientation=%d, UnlockPanLimits=%d, MinZoom=%.2f, DefaultZoom=%.2f\n",
                g_Enabled, g_LockOrientation, g_UnlockPanLimits, g_MinZoom, g_DefaultZoom);
