@@ -9,6 +9,7 @@
 static volatile float g_MinZoom = 0.20f;
 static volatile float g_DefaultZoom = 0.20f;
 static volatile int g_LockOrientation = 1;
+static int g_UnlockPanLimits = 0;
 static const float kPi = 3.14159265f;
 static int g_Enabled = 1;
 static int g_EnableLog = 1;
@@ -32,7 +33,8 @@ static void LogMessage(const char* fmt, ...) {
 // C Worker Functions called from assembly wrappers
 // -------------------------------------------------------------
 
-// Enforces min zoom limit (g_MinZoom) and max zoom limit (3.5f)
+// Enforces min zoom limit (g_MinZoom) and max zoom limit (3.5f),
+// and clamps camera coordinates inside Greenvale map boundaries when UnlockPanLimits = 0.
 void __cdecl ZoomClampWorker(void* pMap) {
     if (!pMap) return;
     float* pZoom = (float*)((char*)pMap + 0x8EE0);
@@ -40,6 +42,24 @@ void __cdecl ZoomClampWorker(void* pMap) {
         *pZoom = g_MinZoom;
     } else if (*pZoom > 3.5f) {
         *pZoom = 3.5f;
+    }
+
+    if (!g_UnlockPanLimits && *pZoom > 0.001f) {
+        float* pCamX = (float*)((char*)pMap + 0x8ED0);
+        float* pCamZ = (float*)((char*)pMap + 0x8ED8);
+
+        float halfW = 4687.5f / *pZoom;
+        float halfH = 2636.72f / *pZoom;
+
+        float minX = (halfW < 20000.0f) ? halfW : 20000.0f;
+        float maxX = 40000.0f - minX;
+        if (*pCamX < minX) *pCamX = minX;
+        else if (*pCamX > maxX) *pCamX = maxX;
+
+        float minZ = (halfH < 20000.0f) ? halfH : 20000.0f;
+        float maxZ = 40000.0f - minZ;
+        if (*pCamZ < minZ) *pCamZ = minZ;
+        else if (*pCamZ > maxZ) *pCamZ = maxZ;
     }
 }
 
@@ -484,6 +504,8 @@ static void LoadConfig(HMODULE hModule) {
     g_LockOrientation = GetPrivateProfileIntW(L"MapFix", L"LockOrientation", 1, iniPath);
     if (g_LockOrientation < 0 || g_LockOrientation > 2) g_LockOrientation = 1;
 
+    g_UnlockPanLimits = GetPrivateProfileIntW(L"MapFix", L"UnlockPanLimits", 0, iniPath);
+
     wchar_t buf[64] = { 0 };
     GetPrivateProfileStringW(L"MapFix", L"MinZoom", L"0.20", buf, 64, iniPath);
     float minZ = (float)_wtof(buf);
@@ -499,8 +521,8 @@ static void LoadConfig(HMODULE hModule) {
 
     (void)*(volatile const float*)&kPi;
 
-    LogMessage("[MapFix] Config: Enabled=%d, LockOrientation=%d, MinZoom=%.2f, DefaultZoom=%.2f\n",
-               g_Enabled, g_LockOrientation, g_MinZoom, g_DefaultZoom);
+    LogMessage("[MapFix] Config: Enabled=%d, LockOrientation=%d, UnlockPanLimits=%d, MinZoom=%.2f, DefaultZoom=%.2f\n",
+               g_Enabled, g_LockOrientation, g_UnlockPanLimits, g_MinZoom, g_DefaultZoom);
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
