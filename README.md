@@ -17,14 +17,14 @@ In the vanilla game, the in-game map viewer is severely constrained:
 
 ## Features
 
-- 🗺️ **Full 64-Tile Overworld Rendering**: Replaces the vanilla 9-tile loop restriction with a full 64-tile rendering loop (`0x0065A2ED` & `0x0065A43C`), drawing `SMAP00_00_000.XPC` through `SMAP00_00_063.XPC` across the entire map canvas.
-- 🔍 **Unlocked Zoom-Out (`0.20x`)**: Removes the vanilla `1.0` floor clamp (`0x0065919F`), allowing smooth zoom-out down to `0.20x` to view all of Greenvale at a glance.
-- 🛡️ **Tile Deletion & Release Immunity**: Hooks `ResourceManager::ReleaseResource` (`0x006B2830`) and `DeleteResource` (`0x006B3AA0`) to protect all 64 overworld tiles (IDs `0x0937..0x0976`) from ever being evicted or marked for unload while panning.
-- ⚡ **On-Demand Auto-Load Hook**: Hooks `FindResourceByName` (`0x0065A32A`) in the render loop so that any tile missing from RAM is synchronously loaded on-the-spot without popping or blank gaps.
-- 🧭 **Synchronous Preloader**: Loads all 64 tiles synchronously when the map viewer is opened (`0x00661860`), ensuring instantaneous rendering before the first frame.
-- 🎮 **Configurable Panning Boundaries**: Choose whether camera panning is clamped strictly inside Greenvale (`UnlockPanLimits = 0`) to prevent seeing grey borders outside the map, or allows full free panning across the entire `40000x40000` world space (`UnlockPanLimits = 1`).
-- 🧭 **Map Orientation Lock (North-Up / South-Up)**: Overrides the disorienting dynamic map rotation (`0x00659499`..`0x0065D6B3`) so the map stays locked to North-Up (`LockOrientation = 1`) or South-Up (`LockOrientation = 2`), while decoupling York's player arrow (`0x0065C27B`) so it accurately rotates independently on the fixed map canvas.
-- ⚙️ **Customizable Configuration**: Configure initial zoom, minimum zoom floor, map orientation lock, pan limits, and debug logging through `MapFix.ini`.
+- **Full 64-Tile Overworld Rendering**: Replaces the vanilla 9-tile loop restriction with a full 64-tile rendering loop (`0x0065A2ED` & `0x0065A43C`), drawing `SMAP00_00_000.XPC` through `SMAP00_00_063.XPC` across the entire map canvas.
+- **Unlocked Zoom-Out (`0.20x`)**: Removes the vanilla `1.0` floor clamp (`0x0065919F`), allowing smooth zoom-out down to `0.20x` to view all of Greenvale at a glance.
+- **Tile Deletion & Release Immunity**: Hooks `ResourceManager::ReleaseResource` (`0x006B2830`) and `DeleteResource` (`0x006B3AA0`) to protect all 64 overworld tiles (IDs `0x0937..0x0976`) from ever being evicted or marked for unload while panning.
+- **On-Demand Auto-Load Hook**: Hooks `FindResourceByName` (`0x0065A32A`) in the render loop so that any tile missing from RAM is synchronously loaded on-the-spot without popping or blank gaps.
+- **Synchronous Preloader**: Loads all 64 tiles synchronously when the map viewer is opened (`0x00661860`), ensuring instantaneous rendering before the first frame.
+- **Configurable Panning Boundaries**: Choose whether camera panning is clamped strictly inside Greenvale (`UnlockPanLimits = 0`) to prevent seeing grey borders outside the map, or allows full free panning across the entire `40000x40000` world space (`UnlockPanLimits = 1`).
+- **Map Orientation Lock (North-Up / South-Up)**: Overrides the disorienting dynamic map rotation (`0x00659499`..`0x0065D6B3`) so the map stays locked to North-Up (`LockOrientation = 1`) or South-Up (`LockOrientation = 2`), while decoupling York's player arrow (`0x0065C27B`) so it accurately rotates independently on the fixed map canvas.
+- **Customizable Configuration**: Configure initial zoom, minimum zoom floor, map orientation lock, pan limits, and debug logging through `MapFix.ini`.
 
 ---
 
